@@ -9,11 +9,9 @@ Projekt polega na nauczeniu modelu generowania zdjęć gumowej figurki ptaka ins
 
 Wykorzystany został samodzielnie przygotowany dataset, złożony z 20 zdjęć wykonanych telefonem komórkowym. 6 zdjęć przedstawia figurkę z różnych stron na białym tle, na pozostałych jest ona w kontekście różnych przedmiotów. Dataset nie zawiera zbliżeń na detale, obiektyw telefonu nie pozwalał na ich wykonanie ze względu na rozmiar figurki. Grafiki zostały poddane transformacjom resize oraz center crop, modyfikując ich wymiary do kwadratów o boku 512px.
 
-|                           |                           |                           |                           |                           |
-|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|
 | ![1](assets/image52.jpg)  |  ![2](assets/image4.jpg)  | ![3](assets/image27.jpg)  | ![4](assets/image47.jpg)  | ![5](assets/image25.jpg)  |
+|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|
 | ![6](assets/image23.jpg)  | ![7](assets/image44.jpg)  | ![8](assets/image17.jpg)  | ![9](assets/image33.jpg)  | ![10](assets/image19.jpg) |
-| ![11](assets/image15.jpg) | ![12](assets/image55.jpg) | ![13](assets/image46.jpg) | ![14](assets/image14.jpg) | ![15](assets/image12.jpg) |
 | ![11](assets/image15.jpg) | ![12](assets/image55.jpg) | ![13](assets/image46.jpg) | ![14](assets/image14.jpg) | ![15](assets/image12.jpg) |
 | ![11](assets/image5.jpg)  | ![12](assets/image42.jpg) | ![13](assets/image11.jpg) | ![14](assets/image39.jpg) | ![15](assets/image10.jpg) |
 # LoRA
