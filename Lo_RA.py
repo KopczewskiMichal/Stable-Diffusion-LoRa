@@ -12,40 +12,34 @@ from peft import LoraConfig, get_peft_model
 import bitsandbytes as bnb
 from itertools import cycle
 
-# ================= KONFIGURACJA (TUTAJ ZMIEŃ ŚCIEŻKĘ) =================
-# Ścieżka do Twoich zdjęć kubka (może być Windowsowa)
 PATH_TO_IMAGES = r"./Data/Bird"
 
 OUTPUT_DIR = "./Bird_LoRA_no_output"
 MODEL_ID = "runwayml/stable-diffusion-v1-5"
 
-# Prompty do Kubka-Liska (Ustawione na sztywno, bo o to prosiłeś)
-INSTANCE_PROMPT = "a photo of skp_red_bird figurine"  # Unikalny trigger
-CLASS_PROMPT = "a photo of small plastic figurine"  # Klasa ogólna
+INSTANCE_PROMPT = "a photo of skp_red_bird figurine"
+CLASS_PROMPT = "a photo of small plastic figurine"
 
-# Parametry treningu (Zoptymalizowane pod 8GB VRAM i jakość)
 RESOLUTION = 512
 BATCH_SIZE = 1
-STEPS = 1000  # 800-1200 jest zazwyczaj idealne dla obiektów
-LEARNING_RATE = 1e-4  # Standard dla AdamW8bit
-RANK = 128  # Duży rank, żeby złapał kształt uszu i pyszczka
-ALPHA = 128  # Pełne nasycenie wag
+STEPS = 1000
+LEARNING_RATE = 1e-4
+RANK = 128
+ALPHA = 128
 
 
-# ================= CZĘŚĆ 1: DATASET (KULOODPORNY) =================
 class DreamBoothDataset(Dataset):
     def __init__(self, folder, tokenizer, size=512):
         if not os.path.exists(folder):
             raise ValueError(f"Kurczę, folder nie istnieje: {folder}")
 
-        # Obsługa wszystkich rozszerzeń + wielkość liter
         exts = ('*.png', '*.jpg', '*.jpeg', '*.webp', '*.bmp', '*.JPG')
         self.images = []
         for ext in exts:
             self.images.extend(glob.glob(os.path.join(folder, ext)))
             self.images.extend(glob.glob(os.path.join(folder, ext.upper())))
 
-        self.images = sorted(list(set(self.images)))  # Usuń duplikaty
+        self.images = sorted(list(set(self.images)))
         print(f"DEBUG: Znaleziono {len(self.images)} zdjęć w folderze.")
 
         if len(self.images) == 0:
@@ -67,7 +61,7 @@ class DreamBoothDataset(Dataset):
             image = Image.open(self.images[i]).convert("RGB")
         except Exception as e:
             print(f"Błąd pliku {self.images[i]}: {e}")
-            return self.__getitem__((i + 1) % len(self.images))  # Skip error
+            return self.__getitem__((i + 1) % len(self.images))
 
         pixel_values = self.transforms(image)
 
@@ -83,17 +77,13 @@ class DreamBoothDataset(Dataset):
         return {"pixel_values": pixel_values, "input_ids": tokenized}
 
 
-# ================= CZĘŚĆ 2: PRZYGOTOWANIE MODELU =================
 print(">>> Ładowanie modeli (VAE, Tokenizer, UNet)...")
 tokenizer = CLIPTokenizer.from_pretrained(MODEL_ID, subfolder="tokenizer")
-# VAE na CPU w float32 (najbezpieczniej dla 8GB)
 vae = AutoencoderKL.from_pretrained(MODEL_ID, subfolder="vae").to("cpu", dtype=torch.float32)
-# Text Encoder na GPU (będzie potrzebny tylko przez chwilę)
 text_encoder = CLIPTextModel.from_pretrained(MODEL_ID, subfolder="text_encoder", torch_dtype=torch.float16).to("cuda")
 unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=torch.float32).to("cuda")
 noise_scheduler = DDPMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
 
-# Konfiguracja LoRA
 print(f">>> Konfiguracja LoRA (Rank: {RANK})...")
 lora_config = LoraConfig(
     r=RANK, lora_alpha=ALPHA,
@@ -103,14 +93,12 @@ lora_config = LoraConfig(
 )
 unet = get_peft_model(unet, lora_config)
 
-# Optymalizator 8-bitowy (Klucz do 8GB VRAM)
 optimizer = bnb.optim.AdamW8bit(unet.parameters(), lr=LEARNING_RATE)
 lr_scheduler = get_scheduler("cosine", optimizer=optimizer, num_training_steps=STEPS, num_warmup_steps=100)
 
 dataset = DreamBoothDataset(PATH_TO_IMAGES, tokenizer, RESOLUTION)
 dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-# ================= CZĘŚĆ 3: PRE-CACHING (MAGIA OPTYMALIZACJI) =================
 print(">>> Cache'owanie danych do VRAM (To uwolni CPU i przyspieszy trening)...")
 cached_latents = []
 
@@ -118,14 +106,11 @@ vae.requires_grad_(False)
 text_encoder.requires_grad_(False)
 
 for batch in dataloader:
-    # 1. Obraz -> Latent
     pixel_values = batch["pixel_values"].to("cpu", dtype=torch.float32)
     with torch.no_grad():
-        # Encode na CPU, potem transfer na GPU
         latents = vae.encode(pixel_values).latent_dist.sample() * 0.18215
     latents = latents.to("cuda", dtype=torch.float16)
 
-    # 2. Tekst -> Embedding
     input_ids = batch["input_ids"].to("cuda")
     with torch.no_grad():
         encoder_hidden_states = text_encoder(input_ids)[0].to(dtype=torch.float16)
@@ -134,7 +119,6 @@ for batch in dataloader:
 
 print(f">>> Zcache'owano {len(cached_latents)} batchy. Usuwam zbędne modele...")
 
-# Czyścimy RAM i VRAM
 del vae
 del text_encoder
 del tokenizer
@@ -143,7 +127,6 @@ del dataloader
 gc.collect()
 torch.cuda.empty_cache()
 
-# ================= CZĘŚĆ 4: TRENING (SZYBKI) =================
 print(">>> START TRENINGU...")
 unet.enable_gradient_checkpointing()
 unet.train()
@@ -152,7 +135,6 @@ train_iter = cycle(cached_latents)
 for step in range(STEPS):
     latents, encoder_hidden_states = next(train_iter)
 
-    # Autocast dla szybkości
     with torch.amp.autocast('cuda'):
         noise = torch.randn_like(latents)
         timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (latents.shape[0],),
@@ -160,10 +142,8 @@ for step in range(STEPS):
 
         noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-        # UNet przewiduje szum
         noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
-        # Loss (MSE)
         loss = torch.nn.functional.mse_loss(noise_pred.float(), noise.float())
 
     loss.backward()
